@@ -14,10 +14,9 @@ O navegador nunca recebe credenciais do Google. Login, validação, busca, impor
 ## 1. Google Drive
 
 1. Crie uma pasta exclusiva chamada `Perfect Prospect` no Drive da conta usada pelo sistema.
-2. No Google Cloud, habilite apenas a Google Drive API no projeto escolhido.
-3. Configure a tela de consentimento OAuth e crie um cliente OAuth.
-4. Gere um refresh token para a mesma conta que possui a pasta.
-5. Guarde o ID da pasta, visível na URL depois de `folders/`.
+2. Guarde o ID da pasta, visível na URL depois de `folders/`.
+3. Para o piloto gratuito, crie um projeto em `script.google.com`, copie o conteúdo de `scripts/google-drive-webapp.gs`, troque o segredo e implante como app da Web executado pela conta proprietária.
+4. Como alternativa, habilite a Google Drive API no Google Cloud e configure OAuth com refresh token.
 
 Não salve client secret ou refresh token no GitHub. Como o Drive é usado como banco do piloto, a conta deve ter autenticação em duas etapas e a pasta não deve ser pública.
 
@@ -30,11 +29,12 @@ SESSION_SECRET=<segredo aleatório com pelo menos 32 caracteres>
 ADMIN_EMAIL=<e-mail de acesso>
 ADMIN_PASSWORD_HASH=<hash gerado por npm run password:hash>
 STORAGE_PROVIDER=drive
-GOOGLE_CLIENT_ID=<cliente OAuth>
-GOOGLE_CLIENT_SECRET=<segredo OAuth>
-GOOGLE_REFRESH_TOKEN=<refresh token OAuth>
 GOOGLE_DRIVE_FOLDER_ID=<id da pasta Perfect Prospect>
+GOOGLE_APPS_SCRIPT_URL=<URL da implantação do app da Web>
+GOOGLE_APPS_SCRIPT_SECRET=<o mesmo segredo definido no script>
 ```
+
+Se preferir OAuth direto, substitua as duas variáveis do Apps Script por `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` e `GOOGLE_REFRESH_TOKEN`.
 
 A busca gratuita não usa `GOOGLE_PLACES_API_KEY`. A análise local também não usa `LLM_API_KEY`; essas integrações só devem ser ativadas depois de definir orçamento.
 

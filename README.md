@@ -39,10 +39,12 @@ Em produção, configure no Netlify:
 - `ADMIN_EMAIL`
 - `ADMIN_PASSWORD_HASH`
 - `STORAGE_PROVIDER=drive`
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `GOOGLE_REFRESH_TOKEN`
 - `GOOGLE_DRIVE_FOLDER_ID`
+
+Para conectar o Drive, escolha uma das opções:
+
+- ponte gratuita do Apps Script: `GOOGLE_APPS_SCRIPT_URL` e `GOOGLE_APPS_SCRIPT_SECRET`;
+- OAuth direto: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` e `GOOGLE_REFRESH_TOKEN`.
 
 `GOOGLE_PLACES_API_KEY` e as variáveis `LLM_*` são opcionais. A busca gratuita usa OpenStreetMap, e a pré-qualificação local não depende de uma API de IA.
 

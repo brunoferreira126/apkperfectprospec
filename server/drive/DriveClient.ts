@@ -1,5 +1,9 @@
 interface DriveFile { id: string; name: string; mimeType: string }
 
+interface AppsScriptConfig { url: string; secret: string }
+
+interface AppsScriptResponse<T> { ok: boolean; result?: T; error?: string }
+
 export class DriveClient {
   private accessToken?: { value: string; expiresAt: number };
 
@@ -7,6 +11,30 @@ export class DriveClient {
     const value = process.env[name];
     if (!value) throw new Error(`DRIVE_CONFIGURATION_MISSING:${name}`);
     return value;
+  }
+
+  private appsScriptConfig(): AppsScriptConfig | null {
+    const url = process.env.GOOGLE_APPS_SCRIPT_URL;
+    const secret = process.env.GOOGLE_APPS_SCRIPT_SECRET;
+    if (!url && !secret) return null;
+    if (!url) throw new Error("DRIVE_CONFIGURATION_MISSING:GOOGLE_APPS_SCRIPT_URL");
+    if (!secret) throw new Error("DRIVE_CONFIGURATION_MISSING:GOOGLE_APPS_SCRIPT_SECRET");
+    if (!url.startsWith("https://")) throw new Error("DRIVE_CONFIGURATION_INVALID:GOOGLE_APPS_SCRIPT_URL");
+    return { url, secret };
+  }
+
+  private async rpc<T>(config: AppsScriptConfig, action: string, payload: Record<string, unknown>): Promise<T> {
+    const response = await fetch(config.url, {
+      method: "POST",
+      headers: { "content-type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify({ secret: config.secret, action, ...payload }),
+      redirect: "follow",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error(`DRIVE_SCRIPT_REQUEST_FAILED:${response.status}`);
+    const data = await response.json() as AppsScriptResponse<T>;
+    if (!data.ok) throw new Error(`DRIVE_SCRIPT_FAILED:${data.error ?? "UNKNOWN"}`);
+    return data.result as T;
   }
 
   private async token(): Promise<string> {
@@ -40,17 +68,23 @@ export class DriveClient {
   }
 
   async getJson<T>(fileId: string): Promise<T> {
+    const script = this.appsScriptConfig();
+    if (script) return this.rpc<T>(script, "getJson", { fileId });
     const response = await this.request(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`);
     return response.json() as Promise<T>;
   }
 
   async listJson(parentId: string): Promise<DriveFile[]> {
+    const script = this.appsScriptConfig();
+    if (script) return this.rpc<DriveFile[]>(script, "listJson", { parentId });
     const q = encodeURIComponent(`'${parentId}' in parents and trashed = false and mimeType = 'application/json'`);
     const response = await this.request(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=1000`);
     return ((await response.json()) as { files: DriveFile[] }).files;
   }
 
   async findFolder(parentId: string, name: string): Promise<DriveFile | null> {
+    const script = this.appsScriptConfig();
+    if (script) return this.rpc<DriveFile | null>(script, "findFolder", { parentId, name });
     const escaped = name.replace(/'/g, "\\'");
     const q = encodeURIComponent(`'${parentId}' in parents and trashed = false and mimeType = 'application/vnd.google-apps.folder' and name = '${escaped}'`);
     const response = await this.request(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=1`);
@@ -58,6 +92,8 @@ export class DriveClient {
   }
 
   async createFolder(parentId: string, name: string): Promise<string> {
+    const script = this.appsScriptConfig();
+    if (script) return this.rpc<string>(script, "createFolder", { parentId, name });
     const response = await this.request("https://www.googleapis.com/drive/v3/files?fields=id", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -67,6 +103,8 @@ export class DriveClient {
   }
 
   async upsertJson(parentId: string, name: string, value: unknown, fileId?: string): Promise<string> {
+    const script = this.appsScriptConfig();
+    if (script) return this.rpc<string>(script, "upsertJson", { parentId, name, value, fileId });
     const boundary = `perfect_${crypto.randomUUID()}`;
     const metadata = fileId ? { name } : { name, parents: [parentId], mimeType: "application/json" };
     const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(value)}\r\n--${boundary}--`;
@@ -82,6 +120,11 @@ export class DriveClient {
   }
 
   async delete(fileId: string): Promise<void> {
+    const script = this.appsScriptConfig();
+    if (script) {
+      await this.rpc<boolean>(script, "delete", { fileId });
+      return;
+    }
     await this.request(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`, { method: "DELETE" });
   }
 }
