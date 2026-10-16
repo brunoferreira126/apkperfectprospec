@@ -13,7 +13,27 @@ interface OsmElement {
 
 interface OverpassResponse { elements?: OsmElement[] }
 
-const endpoint = "https://overpass-api.de/api/interpreter";
+const endpoints = [
+  "https://overpass.private.coffee/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+];
+const retryableStatuses = new Set([429, 502, 503, 504]);
+const attemptTimeoutMs = 9_000;
+const searchBudgetMs = 24_000;
+const maxAttemptsPerCity = 2;
+const maxConcurrentCities = 2;
+
+class OverpassAttemptError extends Error {
+  readonly kind: string;
+  readonly status?: number;
+
+  constructor(message: string, kind: string, status?: number) {
+    super(message);
+    this.kind = kind;
+    this.status = status;
+  }
+}
 
 const cityBounds: Record<string, string> = {
   Cascavel: "-4.5014681,-38.4474702,-4.0060000,-38.1475871",
@@ -75,21 +95,21 @@ function address(tags: Record<string, string>): string | undefined {
   return [street, district].filter(Boolean).join(" — ") || undefined;
 }
 
-async function searchCity(city: string, segments: string[]): Promise<ProspectCandidate[]> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25_000);
+async function requestCity(endpoint: string, city: string, segments: string[], timeoutMs: number): Promise<ProspectCandidate[]> {
   try {
     const response = await fetch(endpoint, {
       method: "POST",
-      signal: controller.signal,
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
         "user-agent": "PerfectProspect/0.1 (internal commercial prospecting pilot)",
       },
       body: new URLSearchParams({ data: buildQuery(city, segments) }),
     });
-    if (!response.ok) throw new Error(`OSM_API:${response.status}`);
-    const body = await response.json() as OverpassResponse;
+    if (!response.ok) throw new OverpassAttemptError(`OSM_API:${response.status}`, retryableStatuses.has(response.status) ? "upstream_busy" : "http_error", response.status);
+    let body: OverpassResponse;
+    try { body = await response.json() as OverpassResponse; }
+    catch { throw new OverpassAttemptError("OSM_INVALID_RESPONSE", "invalid_response"); }
     return (body.elements ?? []).flatMap((element) => {
       const tags = element.tags ?? {};
       const companyName = first(tags, ["name", "brand", "operator"]);
@@ -125,12 +145,59 @@ async function searchCity(city: string, segments: string[]): Promise<ProspectCan
         source: "OpenStreetMap" as const,
       }];
     });
-  } finally { clearTimeout(timeout); }
+  } catch (error) {
+    if (error instanceof OverpassAttemptError) throw error;
+    if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) {
+      throw new OverpassAttemptError("OSM_TIMEOUT", "timeout");
+    }
+    throw new OverpassAttemptError("OSM_NETWORK_ERROR", "network");
+  }
+}
+
+async function searchCity(city: string, segments: string[], cityIndex: number, deadline: number): Promise<{ candidates: ProspectCandidate[]; succeeded: boolean }> {
+  const orderedEndpoints = endpoints.map((_, index) => endpoints[(index + cityIndex) % endpoints.length]);
+  for (let attempt = 0; attempt < maxAttemptsPerCity; attempt += 1) {
+    const endpoint = orderedEndpoints[attempt];
+    const remaining = deadline - Date.now();
+    if (remaining < 1_000) break;
+    const startedAt = Date.now();
+    try {
+      const candidates = await requestCity(endpoint, city, segments, Math.min(attemptTimeoutMs, remaining));
+      if (attempt > 0) console.info(JSON.stringify({ type: "overpass_fallback_recovered", endpointHost: new URL(endpoint).host, city, attempt: attempt + 1, durationMs: Date.now() - startedAt }));
+      return { candidates, succeeded: true };
+    } catch (error) {
+      const failure = error instanceof OverpassAttemptError ? error : new OverpassAttemptError("OSM_UNKNOWN", "unknown");
+      console.warn(JSON.stringify({
+        type: "overpass_attempt_failed",
+        endpointHost: new URL(endpoint).host,
+        city,
+        attempt: attempt + 1,
+        durationMs: Date.now() - startedAt,
+        status: failure.status ?? null,
+        failureKind: failure.kind,
+      }));
+      if (failure.status !== undefined && !retryableStatuses.has(failure.status)) break;
+    }
+  }
+  return { candidates: [], succeeded: false };
 }
 
 export async function searchOpenStreetMap(input: SearchRequest): Promise<ProspectCandidate[]> {
-  const candidates: ProspectCandidate[] = [];
-  for (const city of input.cities) candidates.push(...await searchCity(city, input.segments));
+  const deadline = Date.now() + searchBudgetMs;
+  const cityResults: Array<{ candidates: ProspectCandidate[]; succeeded: boolean } | undefined> = new Array(input.cities.length);
+  let nextCityIndex = 0;
+  async function worker() {
+    while (true) {
+      const cityIndex = nextCityIndex;
+      nextCityIndex += 1;
+      if (cityIndex >= input.cities.length || Date.now() >= deadline) return;
+      cityResults[cityIndex] = await searchCity(input.cities[cityIndex], input.segments, cityIndex, deadline);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(maxConcurrentCities, input.cities.length) }, () => worker()));
+  const completed = cityResults.filter((result): result is { candidates: ProspectCandidate[]; succeeded: boolean } => Boolean(result));
+  if (!completed.some((result) => result.succeeded)) throw new Error("OSM_ALL_ENDPOINTS_FAILED");
+  const candidates = completed.flatMap((result) => result.candidates);
   return [...new Map(candidates.map((candidate) => [candidate.externalId, candidate])).values()]
     .sort((a, b) => b.opportunityScore - a.opportunityScore || a.companyName.localeCompare(b.companyName, "pt-BR"))
     .slice(0, 160);

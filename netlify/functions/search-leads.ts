@@ -9,7 +9,7 @@ import { allowAttempt } from "./_shared/rateLimit";
 function mapError(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   if (message.startsWith("SEARCH_VALIDATION:")) return safeError(400, "INVALID_SEARCH_DATA");
-  if (message.startsWith("OSM_API:429")) return safeError(429, "SEARCH_SOURCE_BUSY");
+  if (message === "OSM_ALL_ENDPOINTS_FAILED") return safeError(503, "SEARCH_SOURCE_BUSY");
   return safeError(502, "SEARCH_UNAVAILABLE");
 }
 
