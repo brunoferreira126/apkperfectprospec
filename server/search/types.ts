@@ -25,5 +25,5 @@ export interface ProspectCandidate {
     contactRoute: string;
     approachMessage: string;
   };
-  source: "OpenStreetMap" | "Google Places";
+  source: "Overture Maps" | "OpenStreetMap" | "Google Places";
 }

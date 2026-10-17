@@ -20,7 +20,7 @@ function candidateToLead(value: unknown) {
     companyName: candidate.companyName,
     segment: candidate.segment,
     city: candidate.city,
-    source: candidate.source === "Google Places" ? "Google Places" : "OpenStreetMap",
+    source: candidate.source === "Google Places" ? "Google Places" : candidate.source === "Overture Maps" ? "Overture Maps" : "OpenStreetMap",
     externalId: candidate.externalId,
     sourceUrl: candidate.mapsUrl,
     status: "contact_ready",
