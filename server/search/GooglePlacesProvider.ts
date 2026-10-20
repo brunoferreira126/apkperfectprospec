@@ -1,6 +1,7 @@
 import { scoreProspect } from "./scoring";
 import { qualifyProspect } from "./qualification";
 import type { ProspectCandidate, SearchRequest } from "./types";
+import { assessmentScore, phoneOwnershipIndex, verifyPlace } from "./verification";
 
 interface GooglePlace {
   id?: string;
@@ -57,6 +58,8 @@ async function searchCombination(apiKey: string, city: string, segment: string):
         website: place.websiteUri,
         address: place.formattedAddress,
       });
+      const verifiable = { id: place.id, name: place.displayName.text, segment: resolvedSegment, city, address: place.formattedAddress, phone: place.nationalPhoneNumber, website: place.websiteUri, latitude: undefined, longitude: undefined, confidence: 0.9 };
+      const { verification, assessment } = verifyPlace(verifiable, phoneOwnershipIndex([verifiable]));
       return [{
         externalId: place.id,
         companyName: place.displayName.text,
@@ -68,8 +71,10 @@ async function searchCombination(apiKey: string, city: string, segment: string):
         mapsUrl: place.googleMapsUri,
         rating: place.rating,
         reviewCount: place.userRatingCount,
-        opportunityScore: qualification.score,
+        opportunityScore: assessmentScore(assessment),
         signals: scored.signals,
+        verification,
+        commercialAssessment: assessment,
         qualification: {
           identifiedProblem: qualification.identifiedProblem,
           opportunity: qualification.opportunity,

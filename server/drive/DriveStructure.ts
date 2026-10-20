@@ -1,6 +1,6 @@
 import { DriveClient } from "./DriveClient";
 
-const REQUIRED_PATHS = ["database/leads", "database/interactions", "database/opportunities", "database/searches", "reports", "exports", "backups", "logs"];
+const REQUIRED_PATHS = ["database/leads", "database/interactions", "database/opportunities", "database/searches", "database/prospect-decisions", "reports", "exports", "backups", "logs"];
 
 export async function ensureDriveStructure(client: DriveClient): Promise<Record<string, string>> {
   const rootId = process.env.GOOGLE_DRIVE_FOLDER_ID;

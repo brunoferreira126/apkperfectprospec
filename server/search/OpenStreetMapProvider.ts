@@ -1,6 +1,7 @@
 import { scoreProspect } from "./scoring.ts";
 import { qualifyProspect } from "./qualification.ts";
 import type { ProspectCandidate, SearchRequest } from "./types.ts";
+import { assessmentScore, phoneOwnershipIndex, verifyPlace } from "./verification.ts";
 
 interface OsmElement {
   id: number;
@@ -121,6 +122,10 @@ async function requestCity(endpoint: string, city: string, segments: string[], t
       const publicAddress = address(tags);
       const scored = scoreProspect({ phone, website, businessStatus: "OPERATIONAL" });
       const qualification = qualifyProspect({ companyName, segment, city, phone, website, instagram, address: publicAddress });
+      const latitude = element.lat ?? element.center?.lat;
+      const longitude = element.lon ?? element.center?.lon;
+      const verifiable = { id: `osm:${element.type}:${element.id}`, name: companyName, segment, city, address: publicAddress, phone, website, instagram, latitude, longitude, confidence: 0.7 };
+      const { verification, assessment } = verifyPlace(verifiable, phoneOwnershipIndex([verifiable]));
       if (instagram) scored.signals.push("Instagram público disponível");
       return [{
         externalId: `osm:${element.type}:${element.id}`,
@@ -132,8 +137,10 @@ async function requestCity(endpoint: string, city: string, segments: string[], t
         website,
         instagram,
         mapsUrl: `https://www.openstreetmap.org/${element.type}/${element.id}`,
-        opportunityScore: qualification.score,
+        opportunityScore: assessmentScore(assessment),
         signals: [...scored.signals, "Dados colaborativos do OpenStreetMap"],
+        verification,
+        commercialAssessment: assessment,
         qualification: {
           identifiedProblem: qualification.identifiedProblem,
           opportunity: qualification.opportunity,

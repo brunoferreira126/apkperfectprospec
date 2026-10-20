@@ -1,21 +1,29 @@
 import type { Handler } from "@netlify/functions";
 import { audit } from "../../server/audit/logger";
 import { authorize, isSameOrigin } from "../../server/auth/authorize";
-import { createInteractionRepository, createLeadRepository } from "../../server/repositories/factory";
+import { createInteractionRepository, createLeadRepository, createProspectDecisionRepository } from "../../server/repositories/factory";
 import { validateCreateLead } from "../../server/leads/validation";
 import { qualifyProspect } from "../../server/search/qualification";
+import { searchOverture } from "../../server/search/OvertureProvider";
+import type { ProspectCandidate } from "../../server/search/types";
+import { validateSearchRequest } from "../../server/search/validation";
 import { json, parseJson, safeError } from "./_shared/http";
 import { allowAttempt } from "./_shared/rateLimit";
 
-interface ImportCandidate {
-  externalId?: unknown; companyName?: unknown; segment?: unknown; city?: unknown; phone?: unknown;
-  website?: unknown; instagram?: unknown; mapsUrl?: unknown; address?: unknown; signals?: unknown; source?: unknown;
+function canonicalCandidates(values: unknown[]): ProspectCandidate[] {
+  const requested = values.map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("VALIDATION:candidate");
+    const record = value as Record<string, unknown>;
+    if (typeof record.externalId !== "string" || typeof record.city !== "string" || typeof record.segment !== "string") throw new Error("VALIDATION:candidate");
+    return { externalId: record.externalId, city: record.city, segment: record.segment };
+  });
+  const request = validateSearchRequest({ cities: requested.map((item) => item.city), segments: requested.map((item) => item.segment) });
+  const canonical = new Map(searchOverture(request).map((candidate) => [candidate.externalId, candidate]));
+  return requested.map((item) => canonical.get(item.externalId) ?? (() => { throw new Error("VALIDATION:candidate"); })());
 }
 
-function candidateToLead(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("VALIDATION:candidate");
-  const candidate = value as ImportCandidate;
-  const signals = Array.isArray(candidate.signals) ? candidate.signals.filter((item): item is string => typeof item === "string").slice(0, 8) : [];
+function candidateToLead(candidate: ProspectCandidate) {
+  const signals = candidate.signals.slice(0, 8);
   const base = validateCreateLead({
     companyName: candidate.companyName,
     segment: candidate.segment,
@@ -23,26 +31,29 @@ function candidateToLead(value: unknown) {
     source: candidate.source === "Google Places" ? "Google Places" : candidate.source === "Overture Maps" ? "Overture Maps" : "OpenStreetMap",
     externalId: candidate.externalId,
     sourceUrl: candidate.mapsUrl,
-    status: "contact_ready",
-    whatsapp: candidate.phone,
-    website: candidate.website,
-    instagram: candidate.instagram,
+    status: "qualified",
+    whatsapp: candidate.verification.phone.status === "confirmed_whatsapp" ? candidate.phone : undefined,
+    website: candidate.verification.website.status === "confirmed" ? candidate.website : undefined,
+    instagram: candidate.verification.instagram.status === "confirmed" ? candidate.instagram : undefined,
   });
   const qualification = qualifyProspect({
     companyName: base.companyName,
     segment: base.segment,
     city: base.city,
-    phone: base.whatsapp,
-    website: base.website,
-    instagram: base.instagram,
+    phone: candidate.phone,
+    website: candidate.website,
+    instagram: candidate.instagram,
     address: typeof candidate.address === "string" ? candidate.address : undefined,
   });
   const notes = [
     typeof candidate.address === "string" ? `Endereço público: ${candidate.address}` : "",
+    candidate.phone ? `Telefone público (${candidate.verification.phone.status}): ${candidate.phone}` : "",
+    candidate.instagram ? `Instagram associado pela fonte (${candidate.verification.instagram.status}): ${candidate.instagram}` : "",
+    candidate.website ? `Site associado pela fonte (${candidate.verification.website.status}): ${candidate.website}` : "",
     signals.length ? `Sinais preliminares: ${signals.join("; ")}` : "",
     `Tom sugerido: ${qualification.tone}`,
     `Canal recomendado: ${qualification.contactRoute}`,
-    "Lead pré-qualificado automaticamente e aprovado por uma pessoa antes de entrar no CRM.",
+    "Prospect aprovado por uma pessoa para análise comercial. Canais não confirmados permanecem apenas como evidência e não são tratados como contato validado.",
   ].filter(Boolean).join("\n");
   const now = new Date().toISOString();
   return {
@@ -60,6 +71,7 @@ function candidateToLead(value: unknown) {
     },
     generatedMessage: qualification.approachMessage,
     messageGeneratedAt: now,
+    decisionFingerprint: candidate.verification.fingerprint,
   };
 }
 
@@ -72,19 +84,24 @@ export const handler: Handler = async (event) => {
   try {
     const body = parseJson<{ candidates?: unknown[] }>(event.body, 80_000);
     if (!body?.candidates || !Array.isArray(body.candidates) || body.candidates.length < 1 || body.candidates.length > 40) return safeError(400, "INVALID_IMPORT_DATA");
-    const inputs = body.candidates.map(candidateToLead);
+    const inputs = canonicalCandidates(body.candidates).map(candidateToLead);
     const leads = createLeadRepository();
     const interactions = createInteractionRepository();
+    const decisions = createProspectDecisionRepository();
     const existing = await leads.list();
     const known = new Set(existing.map((lead) => lead.externalId).filter(Boolean));
     const imported = [];
     const skipped: string[] = [];
     for (const input of inputs) {
-      if (input.externalId && known.has(input.externalId)) { skipped.push(input.externalId); continue; }
-      const lead = await leads.create(input);
+      const { decisionFingerprint, ...leadInput } = input;
+      if (leadInput.externalId && known.has(leadInput.externalId)) { skipped.push(leadInput.externalId); continue; }
+      const lead = await leads.create(leadInput);
       await interactions.append({ leadId: lead.id, type: "LEAD_CREATED", occurredAt: lead.createdAt, actorId: session.sub, metadata: { source: lead.source, imported: true, automaticallyQualified: true } });
       imported.push(lead);
-      if (lead.externalId) known.add(lead.externalId);
+      if (lead.externalId) {
+        known.add(lead.externalId);
+        await decisions.record({ externalId: lead.externalId, action: "approved", scope: "company", reason: "Aprovado por uma pessoa e importado para o CRM.", fingerprint: decisionFingerprint, actorId: session.sub });
+      }
     }
     audit("SEARCH_RESULTS_IMPORTED", session.sub, undefined, { imported: imported.length, skipped: skipped.length });
     return json(201, { leads: imported, skipped });

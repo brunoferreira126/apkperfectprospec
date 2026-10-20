@@ -1,9 +1,9 @@
 import places from "./data/overture-places.json" with { type: "json" };
-import { scoreProspect } from "./scoring.ts";
 import { qualifyProspect } from "./qualification.ts";
 import type { ProspectCandidate, SearchRequest } from "./types.ts";
+import { assessmentScore, phoneOwnershipIndex, verifyPlace, type VerifiablePlace } from "./verification.ts";
 
-interface OverturePlace {
+interface OverturePlace extends VerifiablePlace {
   id: string;
   name: string;
   segment: string;
@@ -18,6 +18,7 @@ interface OverturePlace {
 }
 
 const catalog = places as OverturePlace[];
+const phoneOwners = phoneOwnershipIndex(catalog);
 
 export function searchOverture(input: SearchRequest): ProspectCandidate[] {
   const cities = new Set(input.cities);
@@ -30,7 +31,7 @@ export function searchOverture(input: SearchRequest): ProspectCandidate[] {
       const website = place.website ?? undefined;
       const instagram = place.instagram ?? undefined;
       const publicAddress = place.address ?? undefined;
-      const scored = scoreProspect({ phone, website, businessStatus: "OPERATIONAL" });
+      const { verification, assessment } = verifyPlace(place, phoneOwners);
       const qualification = qualifyProspect({
         companyName: place.name,
         segment: place.segment,
@@ -40,8 +41,13 @@ export function searchOverture(input: SearchRequest): ProspectCandidate[] {
         instagram,
         address: publicAddress,
       });
-      if (instagram) scored.signals.push("Instagram público disponível");
-      if ((place.confidence ?? 0) >= 0.8) scored.signals.push("Registro com alta confiança na fonte");
+      const signals = [
+        verification.classification === "qualified" ? "Identidade e endereço consistentes na fonte" : "Revisão de dados necessária",
+        verification.phone.status === "conflict" ? "Telefone divergente" : verification.phone.status === "public_unverified" ? "Telefone público — WhatsApp não confirmado" : "Contato direto ainda não localizado",
+        website ? "Site associado pela fonte; confirmar vínculo" : "Sem site identificado — oportunidade digital",
+        instagram ? "Instagram associado pela fonte; confirmar perfil" : "Instagram não localizado",
+        ...(verification.publicEntity ? ["Possível contratação pública"] : []),
+      ];
 
       const coordinates = `${place.latitude},${place.longitude}`;
       return {
@@ -54,8 +60,10 @@ export function searchOverture(input: SearchRequest): ProspectCandidate[] {
         website,
         instagram,
         mapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(coordinates)}`,
-        opportunityScore: qualification.score,
-        signals: [...scored.signals, "Estabelecimento real do catálogo aberto Overture Maps"],
+        opportunityScore: assessmentScore(assessment),
+        signals,
+        verification,
+        commercialAssessment: assessment,
         qualification: {
           identifiedProblem: qualification.identifiedProblem,
           opportunity: qualification.opportunity,

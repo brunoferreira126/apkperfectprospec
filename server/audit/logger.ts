@@ -12,7 +12,8 @@ export type AuditEvent =
   | "OPPORTUNITY_WON"
   | "OPPORTUNITY_LOST"
   | "PROSPECT_SEARCHED"
-  | "SEARCH_RESULTS_IMPORTED";
+  | "SEARCH_RESULTS_IMPORTED"
+  | "PROSPECT_DECISION_RECORDED";
 
 export function audit(event: AuditEvent, userId: string, entityId?: string, metadata: Record<string, unknown> = {}): void {
   const safeMetadata = Object.fromEntries(

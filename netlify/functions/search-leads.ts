@@ -1,6 +1,8 @@
 import type { Handler } from "@netlify/functions";
 import { audit } from "../../server/audit/logger";
 import { authorize, isSameOrigin } from "../../server/auth/authorize";
+import { createProspectDecisionRepository } from "../../server/repositories/factory";
+import { applyProspectDecisions } from "../../server/search/decisions";
 import { searchOverture } from "../../server/search/OvertureProvider";
 import { validateSearchRequest } from "../../server/search/validation";
 import { json, parseJson, safeError } from "./_shared/http";
@@ -21,8 +23,9 @@ export const handler: Handler = async (event) => {
   try {
     const input = validateSearchRequest(parseJson<unknown>(event.body, 6_000));
     const startedAt = Date.now();
-    const candidates = searchOverture(input);
-    console.info(JSON.stringify({ type: "prospect_search_completed", source: "overture_snapshot", durationMs: Date.now() - startedAt, cities: input.cities.length, segments: input.segments.length, results: candidates.length }));
+    const found = searchOverture(input);
+    const candidates = applyProspectDecisions(found, await createProspectDecisionRepository().findManyByExternalIds(found.map((candidate) => candidate.externalId)));
+    console.info(JSON.stringify({ type: "prospect_search_completed", source: "overture_snapshot", durationMs: Date.now() - startedAt, cities: input.cities.length, segments: input.segments.length, results: candidates.length, suppressedByDecision: found.length - candidates.length }));
     audit("PROSPECT_SEARCHED", session.sub, undefined, { cities: input.cities, segments: input.segments, results: candidates.length });
     return json(200, { candidates });
   } catch (error) {

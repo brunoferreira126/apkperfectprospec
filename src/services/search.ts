@@ -1,6 +1,6 @@
 import { ApiError } from "./leads";
 import type { Lead } from "../types/lead";
-import type { ProspectCandidate } from "../types/search";
+import type { ProspectCandidate, ProspectDecisionAction, ProspectDecisionRecord, ProspectDecisionScope } from "../types/search";
 
 async function post<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -20,6 +20,17 @@ export async function searchProspects(cities: string[], segments: string[]): Pro
 
 export async function importProspects(candidates: ProspectCandidate[]): Promise<{ leads: Lead[]; skipped: string[] }> {
   return post("/api/import-search-leads", { candidates });
+}
+
+export async function recordProspectDecision(input: { externalId: string; action: ProspectDecisionAction; scope: ProspectDecisionScope; reason: string; fingerprint: string }): Promise<ProspectDecisionRecord> {
+  return (await post<{ decision: ProspectDecisionRecord }>("/api/prospect-decisions", input)).decision;
+}
+
+export async function listProspectDecisions(): Promise<ProspectDecisionRecord[]> {
+  const response = await fetch("/api/prospect-decisions", { credentials: "include" });
+  const body = await response.json().catch(() => ({})) as { decisions?: ProspectDecisionRecord[]; error?: string };
+  if (!response.ok) throw new ApiError(body.error ?? "REQUEST_FAILED", response.status);
+  return body.decisions ?? [];
 }
 
 export function friendlySearchError(error: unknown): string {

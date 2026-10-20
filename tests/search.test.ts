@@ -4,6 +4,8 @@ import { scoreProspect } from "../server/search/scoring.ts";
 import { qualifyProspect } from "../server/search/qualification.ts";
 import { searchOverture } from "../server/search/OvertureProvider.ts";
 import { validateSearchRequest } from "../server/search/validation.ts";
+import { applyProspectDecisions } from "../server/search/decisions.ts";
+import { assessmentScore, phoneOwnershipIndex, verifyPlace, type VerifiablePlace } from "../server/search/verification.ts";
 
 describe("busca de oportunidades", () => {
   it("aceita regiões e segmentos autorizados", () => {
@@ -54,5 +56,55 @@ describe("busca de oportunidades", () => {
     assert.ok(results.every((candidate) => ["Pindoretama", "Eusébio"].includes(candidate.city)));
     assert.ok(results.every((candidate) => ["Restaurantes", "Imobiliárias"].includes(candidate.segment)));
     assert.equal(new Set(results.map((candidate) => candidate.externalId)).size, results.length);
+  });
+
+  it("não trata telefone divergente como contato validado", () => {
+    const places: VerifiablePlace[] = [
+      { id: "1", name: "Clínica Alfa", segment: "Clínicas e consultórios", city: "Cascavel", address: "Centro, Cascavel", phone: "(85) 99999-0000", latitude: -4.1, longitude: -38.2, confidence: 0.9 },
+      { id: "2", name: "Restaurante Beta", segment: "Restaurantes", city: "Cascavel", address: "Centro, Cascavel", phone: "85 99999-0000", latitude: -4.2, longitude: -38.3, confidence: 0.9 },
+    ];
+    const result = verifyPlace(places[0], phoneOwnershipIndex(places), "2026-10-19T12:00:00.000Z");
+    assert.equal(result.verification.phone.status, "conflict");
+    assert.equal(result.assessment.contactReliability, 0);
+    assert.equal(result.verification.classification, "pending");
+  });
+
+  it("mantém Instagram sem associação como não confirmado e endereço inconsistente em revisão", () => {
+    const place: VerifiablePlace = { id: "3", name: "Clínica Alfa", segment: "Clínicas e consultórios", city: "Eusébio", address: "Centro, Fortaleza", instagram: "https://instagram.com/perfil_aleatorio", latitude: -3.9, longitude: -38.4, confidence: 0.9 };
+    const result = verifyPlace(place, phoneOwnershipIndex([place]), "2026-10-19T12:00:00.000Z");
+    assert.equal(result.verification.instagram.status, "unverified");
+    assert.equal(result.verification.address.status, "inconsistent");
+    assert.equal(result.verification.classification, "pending");
+  });
+
+  it("sinaliza órgão público e limita a prioridade comercial", () => {
+    const place: VerifiablePlace = { id: "4", name: "Secretaria Municipal de Turismo", segment: "Turismo e experiências", city: "Aquiraz", address: "Centro, Aquiraz", phone: "(85) 3333-0000", latitude: -3.9, longitude: -38.3, confidence: 0.95 };
+    const result = verifyPlace(place, phoneOwnershipIndex([place]), "2026-10-19T12:00:00.000Z");
+    assert.equal(result.verification.publicEntity, true);
+    assert.equal(result.assessment.procurementRestriction, "public_procurement");
+    assert.ok(assessmentScore(result.assessment) <= 35);
+    assert.equal(result.verification.classification, "pending");
+  });
+
+  it("oculta reprovação sem mudança e reabre quando a evidência muda", () => {
+    const candidate = searchOverture({ cities: ["Cascavel"], segments: ["Clínicas e consultórios"] })[0];
+    assert.ok(candidate);
+    const event = { id: "decision-1", action: "rejected" as const, scope: "company" as const, reason: "Sem oportunidade verificável", fingerprint: candidate.verification.fingerprint, actorId: "admin", occurredAt: "2026-10-19T12:00:00.000Z" };
+    const decision = { externalId: candidate.externalId, latest: event, history: [event], updatedAt: event.occurredAt };
+    assert.equal(applyProspectDecisions([candidate], [decision]).length, 0);
+    const changed = { ...candidate, verification: { ...candidate.verification, fingerprint: "f".repeat(64) } };
+    const reconsidered = applyProspectDecisions([changed], [decision]);
+    assert.equal(reconsidered.length, 1);
+    assert.match(reconsidered[0].verification.revaluationReason ?? "", /mudaram/i);
+  });
+
+  it("invalida somente o contato sem descartar a empresa", () => {
+    const candidate = searchOverture({ cities: ["Cascavel"], segments: ["Clínicas e consultórios"] }).find((item) => item.phone);
+    assert.ok(candidate);
+    const event = { id: "decision-2", action: "contact_invalidated" as const, scope: "contact" as const, reason: "Telefone pertence a outra empresa", fingerprint: candidate.verification.fingerprint, actorId: "admin", occurredAt: "2026-10-19T12:00:00.000Z" };
+    const [result] = applyProspectDecisions([candidate], [{ externalId: candidate.externalId, latest: event, history: [event], updatedAt: event.occurredAt }]);
+    assert.equal(result.verification.phone.status, "invalid");
+    assert.equal(result.verification.classification, "pending");
+    assert.equal(result.commercialAssessment.contactReliability, 0);
   });
 });

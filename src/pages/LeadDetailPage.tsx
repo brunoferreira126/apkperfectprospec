@@ -98,7 +98,7 @@ export function LeadDetailPage() {
             </div>
             <footer><span>Recomendação gerada em {dateTime.format(new Date(lead.analysis.analyzedAt))}</span><strong>A decisão final é humana.</strong></footer>
           </section>
-          {lead.generatedMessage && <section className="approach-card"><header><div><span className="message-icon"><MessageSquareText size={20} /></span><div><span className="eyebrow">Abordagem sugerida</span><h2>Mensagem preparada para sua aprovação</h2></div></div><span className="draft-badge">{lead.status === "new" || lead.status === "qualified" ? "Aguardando aprovação" : lead.status === "contact_ready" ? "Aprovada" : "Em andamento"}</span></header><blockquote>{lead.generatedMessage}</blockquote><div className="approach-actions"><p>Você mantém o controle: copie a mensagem e confirme cada avanço do lead.</p><div className="phase-actions"><button className="ghost-button" onClick={() => void copyMessage()}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "Copiado" : "Copiar mensagem"}</button>{canEdit && nextPhase(lead.status) && (() => { const action = nextPhase(lead.status)!; const Icon = action.icon; return <button className="solid-button" disabled={saving} onClick={() => void advance(action.status)}><Icon size={16} />{saving ? "Salvando…" : action.label}</button>; })()}</div></div></section>}
+          {lead.generatedMessage && <section className="approach-card"><header><div><span className="message-icon"><MessageSquareText size={20} /></span><div><span className="eyebrow">Abordagem sugerida</span><h2>Mensagem preparada para sua aprovação</h2></div></div><span className="draft-badge">{lead.status === "new" || lead.status === "qualified" ? "Aguardando aprovação" : lead.status === "contact_ready" ? "Aprovada" : "Em andamento"}</span></header><blockquote>{lead.generatedMessage}</blockquote><div className="approach-actions"><p>Você mantém o controle: o WhatsApp apenas abre com o rascunho. Nada é enviado automaticamente; depois confirme manualmente o envio no CRM.</p><div className="phase-actions"><button className="ghost-button" onClick={() => void copyMessage()}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "Copiado" : "Copiar mensagem"}</button>{lead.whatsapp && lead.status === "contact_ready" && <a className="ghost-button link-button" href={whatsappDraftUrl(lead.whatsapp, lead.generatedMessage)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Abrir WhatsApp — não envia</a>}{canEdit && nextPhase(lead.status) && (() => { const action = nextPhase(lead.status)!; const Icon = action.icon; return <button className="solid-button" disabled={saving} onClick={() => void advance(action.status)}><Icon size={16} />{saving ? "Salvando…" : action.label}</button>; })()}</div></div></section>}
         </> : <section className="ai-empty-card"><span className="ai-orbit"><Sparkles size={27} /></span><div><span className="eyebrow">Inteligência comercial</span><h2>Descubra a melhor oportunidade para este lead</h2><p>A IA avalia os dados disponíveis, recomenda uma oferta e prepara uma abordagem. Nenhuma decisão ou contato é automático.</p></div>{canEdit && <button className="ai-button" disabled={analyzing} onClick={() => void runAnalysis()}>{analyzing ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{analyzing ? "Analisando…" : "Analisar lead"}</button>}</section>}
         <section className="detail-card"><header><h2>Dados comerciais</h2></header><div className="info-grid">
           <Info icon={AtSign} label="Instagram" value={lead.instagram} />
@@ -126,6 +126,12 @@ function scorePriority(score: number): "low" | "medium" | "high" {
   if (score >= 75) return "high";
   if (score >= 50) return "medium";
   return "low";
+}
+
+function whatsappDraftUrl(phone: string, message: string): string {
+  const digits = phone.replace(/\D/g, "");
+  const international = digits.length <= 11 ? `55${digits}` : digits;
+  return `https://wa.me/${international}?text=${encodeURIComponent(message)}`;
 }
 
 function nextPhase(status: LeadStatus): { status: LeadStatus; label: string; icon: typeof Send } | null {

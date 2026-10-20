@@ -54,16 +54,16 @@ export function qualifyProspect(input: QualificationInput): ProspectQualificatio
     ? "Como já existe um site, a solução não deve ser escolhida antes de verificar o gargalo real."
     : "O Perfect Link é uma entrada de baixo risco para organizar apresentação, diferenciais e chamada para contato.";
   const contactRoute = input.instagram
-    ? "Direct do Instagram público"
+    ? "Verificar se o Instagram associado é oficial antes de usar o Direct"
     : input.phone
-      ? "WhatsApp ou telefone público; confirmar se fala com o decisor"
+      ? "Telefone público; confirmar titularidade, WhatsApp e acesso ao decisor antes de abordar"
       : "Pesquisar perfil do proprietário ou outro canal direto antes de abordar";
   const approachMessage = `Olá, pessoal da ${input.companyName}! Tudo bem? Aqui é o Bruno Mendes, da Perfect Evolution. Somos da região e dei uma olhada na presença digital de vocês em ${input.city}. Percebi uma oportunidade de melhorar o caminho entre quem conhece a empresa e quem realmente entra em contato. Pensei em uma ideia específica para vocês. Posso te mostrar? É bem rapidinho e sem compromisso.`;
 
   return {
     score,
     scoreBreakdown,
-    summary: `${input.companyName} foi pré-qualificada com dados públicos. ${hasDirectChannel ? "Há um canal de contato disponível." : "O acesso ao decisor ainda precisa ser localizado."}`,
+    summary: `${input.companyName} foi pré-qualificada com dados públicos. ${hasDirectChannel ? "Existe um canal associado pela fonte, ainda sujeito a confirmação." : "O acesso ao decisor ainda precisa ser localizado."}`,
     identifiedProblem,
     opportunity,
     recommendedOffer,
