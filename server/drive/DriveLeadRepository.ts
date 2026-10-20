@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { CreateLeadInput, Lead, LeadFilters, LeadRepository, UpdateLeadInput } from "../repositories/LeadRepository";
 import { DriveClient } from "./DriveClient";
-import { ensureDriveStructure } from "./DriveStructure";
+import { ensureDrivePath } from "./DriveStructure";
 
 type StoredLead = Lead & { _driveFileId?: string };
 
@@ -13,7 +13,7 @@ export class DriveLeadRepository implements LeadRepository {
   }
 
   private async folderId(): Promise<string> {
-    return (await ensureDriveStructure(this.client))["database/leads"];
+    return ensureDrivePath(this.client, "database/leads");
   }
 
   async create(data: CreateLeadInput): Promise<Lead> {

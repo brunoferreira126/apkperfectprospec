@@ -10,6 +10,18 @@ export type LeadStatus =
   | "lost"
   | "discarded";
 
+export interface LeadContactEvidence {
+  publicPhone?: string;
+  phoneStatus?: "missing" | "public_unverified" | "confirmed_whatsapp" | "conflict" | "invalid";
+  phoneReason?: string;
+  publicInstagram?: string;
+  instagramStatus?: "missing" | "probable" | "confirmed" | "unverified";
+  instagramReason?: string;
+  publicWebsite?: string;
+  websiteStatus?: "missing" | "probable" | "confirmed" | "unverified";
+  websiteReason?: string;
+}
+
 export interface Lead {
   id: string;
   version: number;
@@ -23,6 +35,7 @@ export interface Lead {
   instagram?: string;
   whatsapp?: string;
   website?: string;
+  contactEvidence?: LeadContactEvidence;
   decisionMaker?: {
     name?: string;
     role?: string;

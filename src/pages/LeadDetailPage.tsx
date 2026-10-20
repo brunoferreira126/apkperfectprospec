@@ -22,13 +22,14 @@ export function LeadDetailPage() {
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [messageDraft, setMessageDraft] = useState("");
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
-    try { const data = await getLead(id); setLead(data.lead); setHistory(data.history); }
+    try { const data = await getLead(id); setLead(data.lead); setMessageDraft(data.lead.generatedMessage ?? ""); setHistory(data.history); }
     catch (reason) { setError(friendlyLeadError(reason)); }
     finally { setLoading(false); }
   }, [id]);
@@ -58,14 +59,31 @@ export function LeadDetailPage() {
   }
 
   async function copyMessage() {
-    if (!lead?.generatedMessage) return;
-    await navigator.clipboard.writeText(lead.generatedMessage);
+    if (!messageDraft) return;
+    await navigator.clipboard.writeText(messageDraft);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   }
 
   async function advance(status: LeadStatus) {
     await save({ status });
+  }
+
+  async function saveMessage() {
+    if (!messageDraft.trim()) return;
+    await save({ generatedMessage: messageDraft.trim() });
+  }
+
+  async function confirmPublicPhone() {
+    const phone = lead?.contactEvidence?.publicPhone;
+    if (!phone || !lead) return;
+    await save({ whatsapp: phone, contactEvidence: { ...lead.contactEvidence, phoneStatus: "confirmed_whatsapp", phoneReason: "WhatsApp confirmado manualmente pela equipe." } });
+  }
+
+  async function confirmPublicInstagram() {
+    const instagram = lead?.contactEvidence?.publicInstagram;
+    if (!instagram || !lead) return;
+    await save({ instagram, contactEvidence: { ...lead.contactEvidence, instagramStatus: "confirmed", instagramReason: "Perfil oficial confirmado manualmente pela equipe." } });
   }
 
   if (loading) return <div className="page data-state detail-loading"><LoaderCircle className="spin" size={30} /><p>Carregando lead…</p></div>;
@@ -78,6 +96,8 @@ export function LeadDetailPage() {
       <div className="detail-identity"><span className="company-monogram large">{lead.companyName.slice(0, 2).toUpperCase()}</span><div><span className="eyebrow">Lead · {lead.source}</span><h1>{lead.companyName}</h1><p><MapPin size={15} /> {lead.city} <i /> {lead.segment}</p></div></div>
       <div className="detail-actions">{canEdit ? <><button className="ai-button" disabled={analyzing} onClick={() => void runAnalysis()}>{analyzing ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{analyzing ? "Analisando…" : lead.analysis ? "Atualizar análise" : "Analisar com IA"}</button><label className="status-select"><span>Status</span><select value={lead.status} disabled={saving || analyzing} onChange={(event) => void save({ status: event.target.value as LeadStatus })}>{Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><button className="ghost-button" onClick={() => setEditing(true)}><Pencil size={17} /> Editar</button></> : <span className={`status-pill status-${lead.status}`}>{STATUS_LABELS[lead.status]}</span>}</div>
     </header>
+
+    <CommercialProgress status={lead.status} />
 
     <div className="detail-layout">
       <div className="detail-main">
@@ -98,8 +118,13 @@ export function LeadDetailPage() {
             </div>
             <footer><span>Recomendação gerada em {dateTime.format(new Date(lead.analysis.analyzedAt))}</span><strong>A decisão final é humana.</strong></footer>
           </section>
-          {lead.generatedMessage && <section className="approach-card"><header><div><span className="message-icon"><MessageSquareText size={20} /></span><div><span className="eyebrow">Abordagem sugerida</span><h2>Mensagem preparada para sua aprovação</h2></div></div><span className="draft-badge">{lead.status === "new" || lead.status === "qualified" ? "Aguardando aprovação" : lead.status === "contact_ready" ? "Aprovada" : "Em andamento"}</span></header><blockquote>{lead.generatedMessage}</blockquote><div className="approach-actions"><p>Você mantém o controle: o WhatsApp apenas abre com o rascunho. Nada é enviado automaticamente; depois confirme manualmente o envio no CRM.</p><div className="phase-actions"><button className="ghost-button" onClick={() => void copyMessage()}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "Copiado" : "Copiar mensagem"}</button>{lead.whatsapp && lead.status === "contact_ready" && <a className="ghost-button link-button" href={whatsappDraftUrl(lead.whatsapp, lead.generatedMessage)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Abrir WhatsApp — não envia</a>}{canEdit && nextPhase(lead.status) && (() => { const action = nextPhase(lead.status)!; const Icon = action.icon; return <button className="solid-button" disabled={saving} onClick={() => void advance(action.status)}><Icon size={16} />{saving ? "Salvando…" : action.label}</button>; })()}</div></div></section>}
+          {lead.generatedMessage && <section className="approach-card"><header><div><span className="message-icon"><MessageSquareText size={20} /></span><div><span className="eyebrow">Abordagem sugerida</span><h2>Mensagem preparada para sua aprovação</h2></div></div><span className="draft-badge">{lead.status === "new" || lead.status === "qualified" ? "Aguardando aprovação" : lead.status === "contact_ready" ? "Aprovada" : "Em andamento"}</span></header>{canEdit ? <textarea className="approach-editor" value={messageDraft} onChange={(event) => setMessageDraft(event.target.value)} maxLength={2000} rows={6} aria-label="Mensagem comercial editável" /> : <blockquote>{messageDraft}</blockquote>}<div className="approach-actions"><p>Você mantém o controle: o sistema apenas abre o canal com o rascunho. Nada é enviado automaticamente; depois confirme manualmente o envio no CRM.</p><div className="phase-actions">{canEdit && messageDraft.trim() !== (lead.generatedMessage ?? "") && <button className="ghost-button" disabled={saving || !messageDraft.trim()} onClick={() => void saveMessage()}><Pencil size={16} /> Salvar mensagem</button>}<button className="ghost-button" onClick={() => void copyMessage()}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "Copiado" : "Copiar mensagem"}</button>{lead.whatsapp && lead.status === "contact_ready" && <a className="ghost-button link-button" href={whatsappDraftUrl(lead.whatsapp, messageDraft)} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Abrir WhatsApp — não envia</a>}{lead.instagram && lead.status === "contact_ready" && <a className="ghost-button link-button" href={instagramUrl(lead.instagram)} target="_blank" rel="noreferrer"><AtSign size={16} /> Abrir Instagram</a>}{canEdit && nextPhase(lead.status) && (() => { const action = nextPhase(lead.status)!; const Icon = action.icon; return <button className="solid-button" disabled={saving} onClick={() => void advance(action.status)}><Icon size={16} />{saving ? "Salvando…" : action.label}</button>; })()}</div></div></section>}
         </> : <section className="ai-empty-card"><span className="ai-orbit"><Sparkles size={27} /></span><div><span className="eyebrow">Inteligência comercial</span><h2>Descubra a melhor oportunidade para este lead</h2><p>A IA avalia os dados disponíveis, recomenda uma oferta e prepara uma abordagem. Nenhuma decisão ou contato é automático.</p></div>{canEdit && <button className="ai-button" disabled={analyzing} onClick={() => void runAnalysis()}>{analyzing ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{analyzing ? "Analisando…" : "Analisar lead"}</button>}</section>}
+        {lead.contactEvidence && <section className="detail-card contact-evidence-card"><header><div><h2>Canais encontrados na busca</h2><p>Confirme o vínculo antes de tratar o canal como oficial.</p></div></header><div className="contact-evidence-list">
+          {lead.contactEvidence.publicPhone && <div><span><Phone size={17} /><strong>{lead.contactEvidence.publicPhone}</strong><small>{lead.contactEvidence.phoneReason ?? "Telefone público ainda não confirmado."}</small></span>{lead.contactEvidence.phoneStatus === "conflict" || lead.contactEvidence.phoneStatus === "invalid" ? <em className="evidence-invalid">Não utilizar</em> : lead.whatsapp ? <em className="evidence-confirmed"><Check size={14} /> WhatsApp confirmado</em> : canEdit ? <button className="ghost-button" disabled={saving} onClick={() => void confirmPublicPhone()}>Confirmar como WhatsApp</button> : <em>Pendente</em>}</div>}
+          {lead.contactEvidence.publicInstagram && <div><span><AtSign size={17} /><strong>{lead.contactEvidence.publicInstagram}</strong><small>{lead.contactEvidence.instagramReason ?? "Perfil ainda não confirmado."}</small></span><a className="ghost-button link-button" href={instagramUrl(lead.contactEvidence.publicInstagram)} target="_blank" rel="noreferrer">Verificar perfil <ExternalLink size={13} /></a>{lead.instagram ? <em className="evidence-confirmed"><Check size={14} /> Oficial confirmado</em> : canEdit && <button className="ghost-button" disabled={saving} onClick={() => void confirmPublicInstagram()}>Confirmar Instagram oficial</button>}</div>}
+          {lead.contactEvidence.publicWebsite && <div><span><ExternalLink size={17} /><strong>Site associado pela fonte</strong><small>{lead.contactEvidence.websiteReason ?? "Verifique o vínculo com a empresa."}</small></span><a className="ghost-button link-button" href={lead.contactEvidence.publicWebsite} target="_blank" rel="noreferrer">Abrir site <ExternalLink size={13} /></a></div>}
+        </div></section>}
         <section className="detail-card"><header><h2>Dados comerciais</h2></header><div className="info-grid">
           <Info icon={AtSign} label="Instagram" value={lead.instagram} />
           <Info icon={Phone} label="WhatsApp" value={lead.whatsapp} />
@@ -132,6 +157,31 @@ function whatsappDraftUrl(phone: string, message: string): string {
   const digits = phone.replace(/\D/g, "");
   const international = digits.length <= 11 ? `55${digits}` : digits;
   return `https://wa.me/${international}?text=${encodeURIComponent(message)}`;
+}
+
+function instagramUrl(value: string): string {
+  if (/^https?:\/\//i.test(value)) return value;
+  return `https://instagram.com/${value.replace(/^@/, "")}`;
+}
+
+const commercialSteps: { status: LeadStatus; label: string }[] = [
+  { status: "qualified", label: "Qualificado" },
+  { status: "contact_ready", label: "Abordagem aprovada" },
+  { status: "contacted", label: "Contato realizado" },
+  { status: "responded", label: "Respondeu" },
+  { status: "interested", label: "Interessado" },
+  { status: "proposal", label: "Proposta" },
+  { status: "won", label: "Venda" },
+];
+
+function CommercialProgress({ status }: { status: LeadStatus }) {
+  const normalized = status === "new" ? "qualified" : status;
+  const current = commercialSteps.findIndex((step) => step.status === normalized);
+  const terminal = status === "lost" || status === "discarded";
+  return <section className={`commercial-progress${terminal ? " terminal" : ""}`} aria-label="Progresso comercial">
+    <header><strong>Progressão comercial</strong><span>{terminal ? STATUS_LABELS[status] : current >= 0 ? commercialSteps[current].label : STATUS_LABELS[status]}</span></header>
+    <ol>{commercialSteps.map((step, index) => <li className={terminal ? "" : index < current ? "complete" : index === current ? "current" : ""} key={step.status}><i>{index < current ? <Check size={13} /> : index + 1}</i><span>{step.label}</span></li>)}</ol>
+  </section>;
 }
 
 function nextPhase(status: LeadStatus): { status: LeadStatus; label: string; icon: typeof Send } | null {

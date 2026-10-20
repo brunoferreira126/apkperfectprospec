@@ -31,6 +31,34 @@ function phone(value: unknown): string | undefined {
   return clean;
 }
 
+function contactEvidence(value: unknown) {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("VALIDATION:contactEvidence");
+  const record = value as Record<string, unknown>;
+  const phoneStatuses = new Set(["missing", "public_unverified", "confirmed_whatsapp", "conflict", "invalid"]);
+  const associationStatuses = new Set(["missing", "probable", "confirmed", "unverified"]);
+  const publicPhone = text(record.publicPhone, "contactEvidence.publicPhone", 30);
+  if (publicPhone && !/^\+?[\d\s().-]{8,30}$/.test(publicPhone)) throw new Error("VALIDATION:contactEvidence.publicPhone");
+  const phoneStatus = text(record.phoneStatus, "contactEvidence.phoneStatus", 30);
+  const instagramStatus = text(record.instagramStatus, "contactEvidence.instagramStatus", 30);
+  const websiteStatus = text(record.websiteStatus, "contactEvidence.websiteStatus", 30);
+  if (phoneStatus && !phoneStatuses.has(phoneStatus)) throw new Error("VALIDATION:contactEvidence.phoneStatus");
+  if (instagramStatus && !associationStatuses.has(instagramStatus)) throw new Error("VALIDATION:contactEvidence.instagramStatus");
+  if (websiteStatus && !associationStatuses.has(websiteStatus)) throw new Error("VALIDATION:contactEvidence.websiteStatus");
+  const result = {
+    publicPhone,
+    phoneStatus: phoneStatus as "missing" | "public_unverified" | "confirmed_whatsapp" | "conflict" | "invalid" | undefined,
+    phoneReason: text(record.phoneReason, "contactEvidence.phoneReason", 300),
+    publicInstagram: text(record.publicInstagram, "contactEvidence.publicInstagram", 300),
+    instagramStatus: instagramStatus as "missing" | "probable" | "confirmed" | "unverified" | undefined,
+    instagramReason: text(record.instagramReason, "contactEvidence.instagramReason", 300),
+    publicWebsite: webUrl(record.publicWebsite, "contactEvidence.publicWebsite"),
+    websiteStatus: websiteStatus as "missing" | "probable" | "confirmed" | "unverified" | undefined,
+    websiteReason: text(record.websiteReason, "contactEvidence.websiteReason", 300),
+  };
+  return Object.values(result).some(Boolean) ? result : undefined;
+}
+
 function status(value: unknown, fallback?: LeadStatus): LeadStatus {
   if (typeof value !== "string" || !STATUSES.includes(value as LeadStatus)) {
     if (fallback) return fallback;
@@ -61,6 +89,7 @@ export function validateCreateLead(value: unknown): CreateLeadInput {
     instagram: text(input.instagram, "instagram", 160),
     whatsapp: phone(input.whatsapp),
     website: webUrl(input.website, "website"),
+    contactEvidence: contactEvidence(input.contactEvidence),
     decisionMaker: decisionMaker(input.decisionMaker),
     notes: text(input.notes, "notes", 2000),
   };
@@ -81,6 +110,8 @@ export function validateUpdateLead(value: unknown): UpdateLeadInput {
   if ("instagram" in input) result.instagram = text(input.instagram, "instagram", 160);
   if ("whatsapp" in input) result.whatsapp = phone(input.whatsapp);
   if ("website" in input) result.website = webUrl(input.website, "website");
+  if ("contactEvidence" in input) result.contactEvidence = contactEvidence(input.contactEvidence);
+  if ("generatedMessage" in input) result.generatedMessage = text(input.generatedMessage, "generatedMessage", 2000);
   if ("decisionMaker" in input) result.decisionMaker = decisionMaker(input.decisionMaker);
   if ("notes" in input) result.notes = text(input.notes, "notes", 2000);
   return result;

@@ -1,6 +1,6 @@
 import { AlertTriangle, AtSign, BadgeCheck, Building2, Check, CircleX, Clock3, Copy, ExternalLink, Globe2, History, Lightbulb, LoaderCircle, MapPin, MessageSquareText, Search, Smartphone, Sparkles, UserRoundSearch } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 import { friendlySearchError, importProspects, listProspectDecisions, recordProspectDecision, searchProspects } from "../services/search";
 import type { ProspectCandidate, ProspectDecisionRecord, ProspectDecisionScope, VerificationClassification } from "../types/search";
@@ -68,6 +68,7 @@ ENTREGUE
 }
 
 export function SearchLeadsPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const canEdit = user?.role !== "VIEWER";
   const [selectedCities, setSelectedCities] = useState<string[]>(initialCities);
@@ -110,10 +111,10 @@ export function SearchLeadsPage() {
     setImporting(true); setError(""); setNotice("");
     try {
       const result = await importProspects(selectedCandidates);
-      const importedIds = new Set(result.leads.map((lead) => lead.externalId).filter(Boolean));
+      const importedIds = new Set([...result.leads, ...result.existing].map((lead) => lead.externalId).filter(Boolean));
       setCandidates((current) => current.filter((candidate) => !importedIds.has(candidate.externalId) && !result.skipped.includes(candidate.externalId)));
       setSelected(new Set());
-      setNotice(`${result.leads.length} ${result.leads.length === 1 ? "lead aprovado e preparado" : "leads aprovados e preparados"} para contato${result.skipped.length ? `; ${result.skipped.length} já estavam na base` : ""}.`);
+      setNotice(`${result.leads.length} ${result.leads.length === 1 ? "lead aprovado e preparado" : "leads aprovados e preparados"} para contato${result.existing.length ? `; ${result.existing.length} já estavam no CRM e foram atualizados` : ""}.`);
     } catch (reason) { setError(friendlySearchError(reason)); }
     finally { setImporting(false); }
   }
@@ -122,9 +123,11 @@ export function SearchLeadsPage() {
     setDeciding(candidate.externalId); setError(""); setNotice("");
     try {
       const result = await importProspects([candidate]);
+      const target = result.leads[0] ?? result.existing[0];
       setCandidates((current) => current.filter((item) => item.externalId !== candidate.externalId));
-      setNotice(result.leads.length ? `${candidate.companyName} foi aprovado e salvo no CRM.` : `${candidate.companyName} já estava no CRM.`);
+      setNotice(result.leads.length ? `${candidate.companyName} foi aprovado e salvo no CRM.` : `${candidate.companyName} já estava no CRM e foi atualizado.`);
       setRecentDecisions(await listProspectDecisions());
+      if (target) navigate(`/app/leads/${target.id}`);
     } catch (reason) { setError(friendlySearchError(reason)); }
     finally { setDeciding(undefined); }
   }

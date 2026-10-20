@@ -1,5 +1,17 @@
 export type LeadStatus = "new" | "qualified" | "contact_ready" | "contacted" | "responded" | "interested" | "proposal" | "won" | "lost" | "discarded";
 
+export interface LeadContactEvidence {
+  publicPhone?: string;
+  phoneStatus?: "missing" | "public_unverified" | "confirmed_whatsapp" | "conflict" | "invalid";
+  phoneReason?: string;
+  publicInstagram?: string;
+  instagramStatus?: "missing" | "probable" | "confirmed" | "unverified";
+  instagramReason?: string;
+  publicWebsite?: string;
+  websiteStatus?: "missing" | "probable" | "confirmed" | "unverified";
+  websiteReason?: string;
+}
+
 export interface Lead {
   id: string;
   version: number;
@@ -13,6 +25,7 @@ export interface Lead {
   instagram?: string;
   whatsapp?: string;
   website?: string;
+  contactEvidence?: LeadContactEvidence;
   decisionMaker?: { name?: string; role?: string; contact?: string };
   notes?: string;
   score?: number;
@@ -47,8 +60,10 @@ export interface LeadInput {
   instagram?: string;
   whatsapp?: string;
   website?: string;
+  contactEvidence?: LeadContactEvidence;
   decisionMaker?: { name?: string; role?: string; contact?: string };
   notes?: string;
+  generatedMessage?: string;
 }
 
 export interface Interaction {

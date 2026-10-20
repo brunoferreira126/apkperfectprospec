@@ -6,7 +6,7 @@ const empty: LeadInput = { companyName: "", segment: "", city: "", source: "Cada
 
 function fromLead(lead?: Lead): LeadInput {
   if (!lead) return empty;
-  return { companyName: lead.companyName, segment: lead.segment, city: lead.city, source: lead.source, status: lead.status, instagram: lead.instagram, whatsapp: lead.whatsapp, website: lead.website, decisionMaker: lead.decisionMaker, notes: lead.notes };
+  return { companyName: lead.companyName, segment: lead.segment, city: lead.city, source: lead.source, status: lead.status, instagram: lead.instagram, whatsapp: lead.whatsapp, website: lead.website, contactEvidence: lead.contactEvidence, decisionMaker: lead.decisionMaker, notes: lead.notes };
 }
 
 export function LeadForm({ lead, submitting, onSubmit, onCancel }: { lead?: Lead; submitting: boolean; onSubmit(input: LeadInput): Promise<void>; onCancel(): void }) {

@@ -35,6 +35,17 @@ function candidateToLead(candidate: ProspectCandidate) {
     whatsapp: candidate.verification.phone.status === "confirmed_whatsapp" ? candidate.phone : undefined,
     website: candidate.verification.website.status === "confirmed" ? candidate.website : undefined,
     instagram: candidate.verification.instagram.status === "confirmed" ? candidate.instagram : undefined,
+    contactEvidence: {
+      publicPhone: candidate.phone,
+      phoneStatus: candidate.verification.phone.status,
+      phoneReason: candidate.verification.phone.reason,
+      publicInstagram: candidate.instagram,
+      instagramStatus: candidate.verification.instagram.status,
+      instagramReason: candidate.verification.instagram.reason,
+      publicWebsite: candidate.website,
+      websiteStatus: candidate.verification.website.status,
+      websiteReason: candidate.verification.website.reason,
+    },
   });
   const qualification = qualifyProspect({
     companyName: base.companyName,
@@ -89,22 +100,38 @@ export const handler: Handler = async (event) => {
     const interactions = createInteractionRepository();
     const decisions = createProspectDecisionRepository();
     const existing = await leads.list();
-    const known = new Set(existing.map((lead) => lead.externalId).filter(Boolean));
+    const known = new Map(existing.filter((lead) => lead.externalId).map((lead) => [lead.externalId!, lead]));
     const imported = [];
+    const existingLeads = [];
     const skipped: string[] = [];
     for (const input of inputs) {
       const { decisionFingerprint, ...leadInput } = input;
-      if (leadInput.externalId && known.has(leadInput.externalId)) { skipped.push(leadInput.externalId); continue; }
+      const current = leadInput.externalId ? known.get(leadInput.externalId) : undefined;
+      if (current) {
+        const refreshed = await leads.update(current.id, {
+          expectedVersion: current.version,
+          contactEvidence: leadInput.contactEvidence,
+          analysis: current.analysis ?? leadInput.analysis,
+          score: current.score ?? leadInput.score,
+          scoreBreakdown: current.scoreBreakdown ?? leadInput.scoreBreakdown,
+          generatedMessage: current.generatedMessage ?? leadInput.generatedMessage,
+          messageGeneratedAt: current.messageGeneratedAt ?? leadInput.messageGeneratedAt,
+        });
+        existingLeads.push(refreshed);
+        skipped.push(leadInput.externalId!);
+        await decisions.record({ externalId: leadInput.externalId!, action: "approved", scope: "company", reason: "Aprovado novamente e recuperado no CRM.", fingerprint: decisionFingerprint, actorId: session.sub });
+        continue;
+      }
       const lead = await leads.create(leadInput);
       await interactions.append({ leadId: lead.id, type: "LEAD_CREATED", occurredAt: lead.createdAt, actorId: session.sub, metadata: { source: lead.source, imported: true, automaticallyQualified: true } });
       imported.push(lead);
       if (lead.externalId) {
-        known.add(lead.externalId);
+        known.set(lead.externalId, lead);
         await decisions.record({ externalId: lead.externalId, action: "approved", scope: "company", reason: "Aprovado por uma pessoa e importado para o CRM.", fingerprint: decisionFingerprint, actorId: session.sub });
       }
     }
     audit("SEARCH_RESULTS_IMPORTED", session.sub, undefined, { imported: imported.length, skipped: skipped.length });
-    return json(201, { leads: imported, skipped });
+    return json(201, { leads: imported, existing: existingLeads, skipped });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message.startsWith("VALIDATION:")) return safeError(400, "INVALID_IMPORT_DATA");

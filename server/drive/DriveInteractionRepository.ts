@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { InteractionRecord, InteractionRepository } from "../repositories/InteractionRepository";
 import { DriveClient } from "./DriveClient";
-import { ensureDriveStructure } from "./DriveStructure";
+import { ensureDrivePath } from "./DriveStructure";
 
 export class DriveInteractionRepository implements InteractionRepository {
   constructor(private readonly client = new DriveClient()) {}
 
   private async folderId(): Promise<string> {
-    return (await ensureDriveStructure(this.client))["database/interactions"];
+    return ensureDrivePath(this.client, "database/interactions");
   }
 
   async append(input: Omit<InteractionRecord, "id">): Promise<InteractionRecord> {

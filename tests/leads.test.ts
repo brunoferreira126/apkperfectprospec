@@ -22,6 +22,14 @@ describe("validação de leads", () => {
     assert.throws(() => validateUpdateLead({ status: "qualified" }), /VALIDATION:expectedVersion/);
     assert.deepEqual(validateUpdateLead({ expectedVersion: 2, status: "qualified" }), { expectedVersion: 2, status: "qualified" });
   });
+
+  it("preserva canais públicos como evidência sem validá-los automaticamente", () => {
+    const lead = validateCreateLead({ companyName: "Empresa", segment: "Serviços", city: "Aquiraz", source: "Overture Maps", contactEvidence: { publicPhone: "(85) 99999-0000", phoneStatus: "public_unverified", phoneReason: "WhatsApp ainda não confirmado", publicInstagram: "@empresa", instagramStatus: "probable" } });
+    assert.equal(lead.whatsapp, undefined);
+    assert.equal(lead.instagram, undefined);
+    assert.equal(lead.contactEvidence?.publicPhone, "(85) 99999-0000");
+    assert.equal(lead.contactEvidence?.phoneStatus, "public_unverified");
+  });
 });
 
 describe("análise e score", () => {

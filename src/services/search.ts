@@ -18,7 +18,7 @@ export async function searchProspects(cities: string[], segments: string[]): Pro
   return (await post<{ candidates: ProspectCandidate[] }>("/api/search-leads", { cities, segments })).candidates;
 }
 
-export async function importProspects(candidates: ProspectCandidate[]): Promise<{ leads: Lead[]; skipped: string[] }> {
+export async function importProspects(candidates: ProspectCandidate[]): Promise<{ leads: Lead[]; existing: Lead[]; skipped: string[] }> {
   return post("/api/import-search-leads", { candidates });
 }
 
@@ -39,5 +39,7 @@ export function friendlySearchError(error: unknown): string {
   if (error.code === "STORAGE_NOT_CONFIGURED") return "A busca funcionou, mas o Google Drive ainda não está configurado para importar os leads.";
   if (error.code === "TOO_MANY_REQUESTS") return "Muitas buscas em sequência. Aguarde alguns minutos antes de tentar novamente.";
   if (error.code === "INVALID_IMPORT_DATA") return "Algum resultado não pôde ser importado. Refaça a busca e tente novamente.";
+  if (error.code === "IMPORT_UNAVAILABLE") return "Não foi possível salvar o prospect no CRM. Tente novamente; se persistir, verifique a conexão com o Google Drive.";
+  if (error.code === "STORAGE_UNAVAILABLE") return "O Google Drive demorou para responder. Tente novamente em alguns segundos.";
   return "A fonte gratuita de busca está temporariamente indisponível.";
 }

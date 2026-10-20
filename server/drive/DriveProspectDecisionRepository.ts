@@ -1,13 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { ProspectDecisionRecord, ProspectDecisionRepository, RecordProspectDecisionInput } from "../repositories/ProspectDecisionRepository";
 import { DriveClient } from "./DriveClient";
-import { ensureDriveStructure } from "./DriveStructure";
+import { ensureDrivePath } from "./DriveStructure";
 
 export class DriveProspectDecisionRepository implements ProspectDecisionRepository {
   constructor(private readonly client = new DriveClient()) {}
 
   private async folderId(): Promise<string> {
-    return (await ensureDriveStructure(this.client))["database/prospect-decisions"];
+    return ensureDrivePath(this.client, "database/prospect-decisions");
   }
 
   private fileName(externalId: string): string {
