@@ -3,9 +3,14 @@ import { describe, it } from "node:test";
 import { scoreProspect } from "../server/search/scoring.ts";
 import { qualifyProspect } from "../server/search/qualification.ts";
 import { searchOverture } from "../server/search/OvertureProvider.ts";
+import { searchOvertureDetailed } from "../server/search/OvertureProvider.ts";
 import { validateSearchRequest } from "../server/search/validation.ts";
 import { applyProspectDecisions } from "../server/search/decisions.ts";
+import { deduplicateProspects } from "../server/search/deduplication.ts";
+import { normalizeDomain, normalizePhone, normalizeSearchText } from "../server/search/normalization.ts";
 import { assessmentScore, phoneOwnershipIndex, verifyPlace, type VerifiablePlace } from "../server/search/verification.ts";
+import { prospectsToCsv } from "../src/lib/prospectCsv.ts";
+import { whatsappUrl } from "../src/lib/whatsapp.ts";
 
 describe("busca de oportunidades", () => {
   it("aceita regiões e segmentos autorizados", () => {
@@ -16,6 +21,17 @@ describe("busca de oportunidades", () => {
 
   it("rejeita cidades fora das regiões atendidas", () => {
     assert.throws(() => validateSearchRequest({ cities: ["Fortaleza"], segments: ["Restaurantes"] }), /SEARCH_VALIDATION:city/);
+  });
+
+  it("normaliza texto, telefone e domínio sem perder a identidade comercial", () => {
+    assert.equal(normalizeSearchText("  Eusébio — CE  "), "eusebio ce");
+    assert.equal(normalizePhone("+55 (85) 99999-0000"), "85999990000");
+    assert.equal(normalizeDomain("https://www.Exemplo.com.br/contato"), "exemplo.com.br");
+  });
+
+  it("valida até oito palavras-chave e rejeita entradas excessivas", () => {
+    assert.deepEqual(validateSearchRequest({ cities: ["Cascavel"], segments: ["Restaurantes"], keywords: ["  café  ", "café", "pizza"] }).keywords, ["café", "pizza"]);
+    assert.throws(() => validateSearchRequest({ cities: ["Cascavel"], segments: ["Restaurantes"], keywords: Array.from({ length: 9 }, (_, index) => `termo ${index}`) }), /SEARCH_VALIDATION:keywords/);
   });
 
   it("prioriza empresa ativa com contato e oportunidade digital", () => {
@@ -56,6 +72,45 @@ describe("busca de oportunidades", () => {
     assert.ok(results.every((candidate) => ["Pindoretama", "Eusébio"].includes(candidate.city)));
     assert.ok(results.every((candidate) => ["Restaurantes", "Imobiliárias"].includes(candidate.segment)));
     assert.equal(new Set(results.map((candidate) => candidate.externalId)).size, results.length);
+  });
+
+  it("filtra por múltiplas palavras-chave e informa métricas auditáveis", () => {
+    const baseline = searchOvertureDetailed({ cities: ["Cascavel"], segments: ["Restaurantes"] });
+    const named = baseline.candidates[0];
+    assert.ok(named);
+    const token = normalizeSearchText(named.companyName).split(" ").find((part) => part.length >= 4);
+    assert.ok(token);
+    const result = searchOvertureDetailed({ cities: ["Cascavel"], segments: ["Restaurantes"], keywords: [token] });
+    assert.ok(result.candidates.length > 0);
+    assert.ok(result.candidates.every((candidate) => normalizeSearchText(`${candidate.companyName} ${candidate.segment} ${candidate.address ?? ""}`).includes(token)));
+    assert.equal(result.stats.returned, result.candidates.length);
+    assert.ok(result.stats.found >= result.stats.returned);
+  });
+
+  it("remove somente duplicatas com evidência forte e preserva homônimos", () => {
+    const original = searchOverture({ cities: ["Cascavel"], segments: ["Clínicas e consultórios"] }).find((candidate) => candidate.phone);
+    assert.ok(original);
+    const duplicate = { ...original, externalId: "outra-fonte:1", opportunityScore: original.opportunityScore + 1 };
+    const homonym = { ...original, externalId: "outra-fonte:2", phone: "(85) 98888-7777", website: undefined, address: "Outro endereço, Cascavel" };
+    const result = deduplicateProspects([original, duplicate, homonym]);
+    assert.equal(result.duplicates, 1);
+    assert.equal(result.candidates.length, 2);
+    assert.ok(result.candidates.some((candidate) => candidate.externalId === homonym.externalId));
+  });
+
+  it("exporta CSV UTF-8 com estados de verificação e neutraliza fórmulas", () => {
+    const candidate = searchOverture({ cities: ["Cascavel"], segments: ["Clínicas e consultórios"] })[0];
+    assert.ok(candidate);
+    const csv = prospectsToCsv([{ ...candidate, companyName: "=EMPRESA-PERIGOSA" }]);
+    assert.ok(csv.startsWith("\uFEFF"));
+    assert.match(csv, /Estado do telefone/);
+    assert.match(csv, /Pendente de decisão humana/);
+    assert.match(csv, /'=EMPRESA-PERIGOSA/);
+  });
+
+  it("gera link brasileiro do WhatsApp com mensagem sem enviar automaticamente", () => {
+    assert.equal(whatsappUrl("(85) 99999-0000", "Olá, tudo bem?"), "https://wa.me/5585999990000?text=Ol%C3%A1%2C%20tudo%20bem%3F");
+    assert.equal(whatsappUrl("+55 85 99999-0000"), "https://wa.me/5585999990000");
   });
 
   it("não trata telefone divergente como contato validado", () => {

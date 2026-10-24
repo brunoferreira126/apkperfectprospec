@@ -1,6 +1,21 @@
 export type VerificationClassification = "qualified" | "pending" | "discarded";
 export type VerificationConfidence = "high" | "medium" | "low";
 
+export interface SearchStats {
+  found: number;
+  valid: number;
+  duplicates: number;
+  discarded: number;
+  suppressedByDecision: number;
+  returned: number;
+  durationMs: number;
+}
+
+export interface SearchResult {
+  candidates: ProspectCandidate[];
+  stats: SearchStats;
+}
+
 export interface ProspectEvidence {
   field: "identity" | "address" | "phone" | "website" | "instagram" | "activity" | "procurement";
   source: string;

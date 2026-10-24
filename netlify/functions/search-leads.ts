@@ -3,7 +3,7 @@ import { audit } from "../../server/audit/logger";
 import { authorize, isSameOrigin } from "../../server/auth/authorize";
 import { createProspectDecisionRepository } from "../../server/repositories/factory";
 import { applyProspectDecisions } from "../../server/search/decisions";
-import { searchOverture } from "../../server/search/OvertureProvider";
+import { overtureProvider } from "../../server/search/OvertureProvider";
 import { validateSearchRequest } from "../../server/search/validation";
 import { json, parseJson, safeError } from "./_shared/http";
 import { allowAttempt } from "./_shared/rateLimit";
@@ -23,11 +23,12 @@ export const handler: Handler = async (event) => {
   try {
     const input = validateSearchRequest(parseJson<unknown>(event.body, 6_000));
     const startedAt = Date.now();
-    const found = searchOverture(input);
-    const candidates = applyProspectDecisions(found, await createProspectDecisionRepository().findManyByExternalIds(found.map((candidate) => candidate.externalId)));
-    console.info(JSON.stringify({ type: "prospect_search_completed", source: "overture_snapshot", durationMs: Date.now() - startedAt, cities: input.cities.length, segments: input.segments.length, results: candidates.length, suppressedByDecision: found.length - candidates.length }));
+    const result = await overtureProvider.search(input);
+    const candidates = applyProspectDecisions(result.candidates, await createProspectDecisionRepository().findManyByExternalIds(result.candidates.map((candidate) => candidate.externalId)));
+    const stats = { ...result.stats, suppressedByDecision: result.candidates.length - candidates.length, returned: candidates.length, durationMs: Date.now() - startedAt };
+    console.info(JSON.stringify({ type: "prospect_search_completed", source: overtureProvider.id, durationMs: stats.durationMs, cities: input.cities.length, segments: input.segments.length, keywords: input.keywords?.length ?? 0, results: candidates.length, suppressedByDecision: stats.suppressedByDecision }));
     audit("PROSPECT_SEARCHED", session.sub, undefined, { cities: input.cities, segments: input.segments, results: candidates.length });
-    return json(200, { candidates });
+    return json(200, { candidates, stats });
   } catch (error) {
     console.error(JSON.stringify({ type: "operational_error", scope: "search-leads", code: error instanceof Error ? error.message.split(":")[0] : "UNKNOWN" }));
     return mapError(error);

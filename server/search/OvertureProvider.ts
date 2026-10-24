@@ -1,6 +1,9 @@
 import places from "./data/overture-places.json" with { type: "json" };
 import { qualifyProspect } from "./qualification.ts";
-import type { ProspectCandidate, SearchRequest } from "./types.ts";
+import { deduplicateProspects } from "./deduplication.ts";
+import { normalizeSearchText } from "./normalization.ts";
+import type { SearchProvider } from "./SearchProvider.ts";
+import type { ProspectCandidate, SearchProviderResult, SearchRequest } from "./types.ts";
 import { assessmentScore, phoneOwnershipIndex, verifyPlace, type VerifiablePlace } from "./verification.ts";
 
 interface OverturePlace extends VerifiablePlace {
@@ -20,12 +23,14 @@ interface OverturePlace extends VerifiablePlace {
 const catalog = places as OverturePlace[];
 const phoneOwners = phoneOwnershipIndex(catalog);
 
-export function searchOverture(input: SearchRequest): ProspectCandidate[] {
+export function searchOvertureDetailed(input: SearchRequest): SearchProviderResult {
   const cities = new Set(input.cities);
   const segments = new Set(input.segments);
+  const keywords = (input.keywords ?? []).map(normalizeSearchText).filter(Boolean);
 
-  return catalog
+  const matched = catalog
     .filter((place) => cities.has(place.city) && segments.has(place.segment))
+    .filter((place) => !keywords.length || keywords.some((keyword) => normalizeSearchText(`${place.name} ${place.segment} ${place.address ?? ""}`).includes(keyword)))
     .map((place) => {
       const phone = place.phone ?? undefined;
       const website = place.website ?? undefined;
@@ -74,7 +79,25 @@ export function searchOverture(input: SearchRequest): ProspectCandidate[] {
         },
         source: "Overture Maps" as const,
       };
-    })
-    .sort((left, right) => right.opportunityScore - left.opportunityScore || left.companyName.localeCompare(right.companyName, "pt-BR"))
-    .slice(0, 160);
+    });
+  const deduplicated = deduplicateProspects(matched);
+  const sorted = deduplicated.candidates
+    .sort((left, right) => right.opportunityScore - left.opportunityScore || left.companyName.localeCompare(right.companyName, "pt-BR"));
+  const candidates = sorted.slice(0, 160);
+  return {
+    candidates,
+    stats: {
+      found: matched.length,
+      valid: sorted.filter((candidate) => candidate.verification.classification !== "discarded").length,
+      duplicates: deduplicated.duplicates,
+      discarded: sorted.filter((candidate) => candidate.verification.classification === "discarded").length,
+      returned: candidates.length,
+    },
+  };
 }
+
+export function searchOverture(input: SearchRequest): ProspectCandidate[] {
+  return searchOvertureDetailed(input).candidates;
+}
+
+export const overtureProvider: SearchProvider = { id: "overture_snapshot", search: searchOvertureDetailed };

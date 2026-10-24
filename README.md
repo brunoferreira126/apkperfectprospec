@@ -10,14 +10,14 @@ Assistente interno de prospecção comercial da Perfect Evolution.
 
 **Etapa 3 — IA:** análise estruturada, score validado, problema e oportunidade, recomendação entre ofertas ativas e geração de abordagem personalizada sem envio automático.
 
-**Busca multissegmento:** pesquisa real e gratuita em Cascavel, Pindoretama, Aquiraz e Eusébio por meio do OpenStreetMap/Overpass, score preliminar, seleção humana e importação em lote com deduplicação. Google Places permanece como provedor opcional futuro.
+**Busca multissegmento:** pesquisa real e gratuita em Cascavel, Pindoretama, Aquiraz e Eusébio usando um recorte local e auditável do Overture Maps, com palavras-chave opcionais, score preliminar, seleção humana, métricas, exportação CSV e importação em lote com deduplicação conservadora. OpenStreetMap e Google Places permanecem como adaptadores não ativados.
 
 As telas das etapas futuras aparecem apenas como destinos planejados. Nenhuma ação falsa, scraping ou disparo automático foi implementado.
 
 ## Executar localmente
 
 1. Copie `.env.example` para `.env` e preencha os valores.
-   A busca piloto usa OpenStreetMap e não exige chave nem faturamento. `GOOGLE_PLACES_API_KEY` fica disponível apenas para uma futura fonte premium.
+   A busca piloto usa um catálogo Overture Maps empacotado e não exige chave, faturamento nem consulta de rede durante a busca. `GOOGLE_PLACES_API_KEY` fica disponível apenas para uma futura fonte premium.
 2. Gere o hash da senha: `npm run password:hash -- "sua-senha-forte"`.
 3. Instale as dependências: `npm install`.
 4. Rode frontend e Functions: `npm run dev`.
@@ -46,7 +46,7 @@ Para conectar o Drive, escolha uma das opções:
 - ponte gratuita do Apps Script: `GOOGLE_APPS_SCRIPT_URL` e `GOOGLE_APPS_SCRIPT_SECRET`;
 - OAuth direto: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` e `GOOGLE_REFRESH_TOKEN`.
 
-`GOOGLE_PLACES_API_KEY` e as variáveis `LLM_*` são opcionais. A busca gratuita usa OpenStreetMap, e a pré-qualificação local não depende de uma API de IA.
+`GOOGLE_PLACES_API_KEY` e as variáveis `LLM_*` são opcionais. A busca gratuita usa o recorte Overture Maps, e a pré-qualificação local não depende de uma API de IA.
 
 O roteiro completo de entrega está em [docs/deployment.md](docs/deployment.md).
 

@@ -1,6 +1,6 @@
 import { ApiError } from "./leads";
 import type { Lead } from "../types/lead";
-import type { ProspectCandidate, ProspectDecisionAction, ProspectDecisionRecord, ProspectDecisionScope } from "../types/search";
+import type { ProspectCandidate, ProspectDecisionAction, ProspectDecisionRecord, ProspectDecisionScope, SearchResult } from "../types/search";
 
 async function post<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -14,8 +14,8 @@ async function post<T>(url: string, body: unknown): Promise<T> {
   return data as T;
 }
 
-export async function searchProspects(cities: string[], segments: string[]): Promise<ProspectCandidate[]> {
-  return (await post<{ candidates: ProspectCandidate[] }>("/api/search-leads", { cities, segments })).candidates;
+export async function searchProspects(cities: string[], segments: string[], keywords: string[] = []): Promise<SearchResult> {
+  return post<SearchResult>("/api/search-leads", { cities, segments, keywords });
 }
 
 export async function importProspects(candidates: ProspectCandidate[]): Promise<{ leads: Lead[]; existing: Lead[]; skipped: string[] }> {

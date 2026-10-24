@@ -1,6 +1,22 @@
 export interface SearchRequest {
   cities: string[];
   segments: string[];
+  keywords?: string[];
+}
+
+export interface SearchStats {
+  found: number;
+  valid: number;
+  duplicates: number;
+  discarded: number;
+  suppressedByDecision: number;
+  returned: number;
+  durationMs: number;
+}
+
+export interface SearchProviderResult {
+  candidates: ProspectCandidate[];
+  stats: Omit<SearchStats, "suppressedByDecision" | "durationMs">;
 }
 
 export type VerificationClassification = "qualified" | "pending" | "discarded";

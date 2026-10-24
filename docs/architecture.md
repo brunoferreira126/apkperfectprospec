@@ -72,11 +72,11 @@ Cada lead é um JSON separado. As regras de negócio dependem de `LeadRepository
 3. IA — implementada: JSON estruturado validado no servidor, score e abordagem.
 4. Comercial — aprovação, CRM, follow-up, ganho/perda e valores.
 5. Dashboard — métricas calculadas dos dados reais.
-6. Busca — implementada com OpenStreetMap/Overpass como fonte gratuita, filtros por região e segmento, score preliminar, deduplicação e importação somente após seleção humana. Google Places permanece como adaptador opcional.
+6. Busca — implementada com um recorte local do Overture Maps como fonte gratuita, filtros por região, segmento e palavras-chave, score preliminar, deduplicação conservadora, métricas, CSV e importação somente após seleção humana. OpenStreetMap e Google Places permanecem como adaptadores não ativados.
 
 ## Busca de oportunidades
 
-O navegador envia apenas cidades e segmentos permitidos para `/api/search-leads`. A Function valida sessão, origem e rate limit antes de consultar o OpenStreetMap pela API Overpass. Uma consulta por município pode retornar vários estabelecimentos, reduzindo a carga sobre a fonte pública.
+O navegador envia cidades e segmentos permitidos e até oito palavras-chave para `/api/search-leads`. A Function valida sessão, origem e rate limit antes de consultar o catálogo Overture empacotado. A busca não depende de rede externa em tempo de execução; a resposta inclui candidatos e métricas de encontrados, válidos, duplicados, descartados e suprimidos por decisões anteriores.
 
 Os resultados são ordenados por sinais públicos verificáveis, como contato disponível e oportunidade digital. Esse score é preliminar e não substitui a análise estruturada por IA. O endpoint `/api/import-search-leads` valida novamente os dados, evita duplicatas pelo identificador da fonte e cria leads somente depois da seleção explícita do usuário.
 
